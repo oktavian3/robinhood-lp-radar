@@ -400,7 +400,28 @@ export async function evaluateRangeForPool(
 
     const closes = candles.map((c: any) => Number(c.close));
     const timestamps = candles.map((c: any) => new Date(c.bucket));
-    const currentPrice = closes[closes.length - 1] || 0.001;
+    const lastClose = closes[closes.length - 1] || 0;
+
+    // Sanity check: if candle close prices are all unrealistically small
+    // (e.g., < 1e-10 despite both tokens having standard decimals), use tick price instead
+    let currentPrice: number;
+    const medianClose = [...closes].sort((a, b) => a - b)[Math.floor(closes.length / 2)];
+    if (medianClose > 0 && medianClose < 1e-10) {
+      // Candle prices are garbage — compute from pool tick if available
+      if (pool.current_tick !== null && pool.current_tick !== undefined) {
+        const tick = Number(pool.current_tick);
+        if (tick !== 0) {
+          currentPrice = Math.pow(1.0001, Number(pool.current_tick));
+          logger.warn(`[RangeEngine] pool ${poolId}: candle price ${medianClose} too small, using tick price ${currentPrice}`);
+        } else {
+          currentPrice = lastClose || 0.001;
+        }
+      } else {
+        currentPrice = lastClose || 0.001;
+      }
+    } else {
+      currentPrice = lastClose || 0.001;
+    }
     const tvl = Number(pool.tvl_usd ?? 1000);
     const vol24h = Number(pool.volume_24h_usd ?? 0);
     const currentTick = Number(pool.current_tick ?? 0);

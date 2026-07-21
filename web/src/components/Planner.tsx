@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { apiGet, fmtUsd } from '@/lib/api';
+import { apiGet, fmtUsd, formatPrice } from '@/lib/api';
 
 type RangeData = {
   pair: string;
@@ -137,13 +137,19 @@ function QuickRangeResultView({ data }: { data: QuickRangeResult }) {
     ? `${data.priceChange24h > 0 ? '+' : ''}${data.priceChange24h.toFixed(1)}%`
     : 'N/A';
 
+  function spreadColor(s: number): string {
+    if (s < 20) return 'var(--positive)';
+    if (s < 100) return 'var(--warning)';
+    return 'var(--negative)';
+  }
+
   return (
     <>
       <div className="pools-grid" style={{ marginBottom: 16 }}>
         <div className="card">
           <div className="card-label">{data.symbol} — Price Analysis</div>
           <div style={{ marginTop: 12 }}>
-            <Row label="Price" value={`$${data.currentPrice.toFixed(6)}`} />
+            <Row label="Price" value={`$${formatPrice(data.currentPrice)}`} />
             <Row label="24h Change" value={chg} color={data.priceChange24h && data.priceChange24h > 0 ? 'var(--positive)' : 'var(--negative)'} />
             <Row label="Vol 24h" value={`$${fmtUsd(data.vol24h)}`} />
             <Row label="TVL" value={`$${fmtUsd(data.tvlUsd)}`} />
@@ -164,7 +170,13 @@ function QuickRangeResultView({ data }: { data: QuickRangeResult }) {
 
       {/* Candidate ranges */}
       <div className="card" style={{ marginBottom: 16 }}>
-        <div className="card-label">Candidate Ranges</div>
+        <div className="card-label">{data.symbol} — Range Analysis</div>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
+          Current price: <span className="mono" style={{ color: 'var(--text-primary)' }}>
+            ${data.currentPrice.toLocaleString(undefined, { minimumSignificantDigits: 4 })}
+          </span>
+          &nbsp;· {data.bestPool.pair} · {data.bestPool.fee / 10000}% fee pool
+        </div>
         <div className="table-wrap">
           <table>
             <thead>
@@ -174,12 +186,12 @@ function QuickRangeResultView({ data }: { data: QuickRangeResult }) {
               {data.ranges.map(r => (
                 <tr key={r.num}>
                   <td>{r.num}</td>
-                  <td style={{ fontWeight: r.num === 1 ? 600 : undefined, color: r.num === 1 ? 'var(--lime)' : undefined }}>
+                  <td style={{ fontWeight: r.num === 1 ? 600 : undefined, color: r.num === 1 ? 'var(--lime)' : 'var(--text-secondary)' }}>
                     {r.label}
                   </td>
-                  <td className="mono">${r.lowerPrice.toFixed(6)}</td>
-                  <td className="mono">${r.upperPrice.toFixed(6)}</td>
-                  <td>{r.spreadPct}%</td>
+                  <td className="mono">${formatPrice(r.lowerPrice)}</td>
+                  <td className="mono">${formatPrice(r.upperPrice)}</td>
+                  <td style={{ color: spreadColor(r.spreadPct) }}>{r.spreadPct.toFixed(1)}%</td>
                   <td style={{ color: parseFloat(r.il) < -10 ? 'var(--negative)' : parseFloat(r.il) < -5 ? 'var(--warning)' : 'var(--positive)' }}>
                     {r.il}%
                   </td>

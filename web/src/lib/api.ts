@@ -23,3 +23,11 @@ export function fmtUsd(n: number): string {
 export function fmtNum(n: number): string {
   return n ? n.toLocaleString() : '0';
 }
+export function formatPrice(n: number): string {
+  if (!n || !isFinite(n)) return '--';
+  if (n >= 1e6) return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  if (n >= 1) return n.toFixed(4);
+  if (n >= 1e-6) return n.toFixed(8);
+  if (n >= 1e-12) return n.toExponential(4);
+  return n.toExponential(4);
+}

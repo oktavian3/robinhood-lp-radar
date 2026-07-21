@@ -115,22 +115,25 @@ export async function buildCandles(): Promise<number> {
             baseVol += totalA0;
             quoteVol += totalA1;
           } else {
-            // v3: amount0, amount1, sqrtPriceX96, tick
-            if (d.amount0 !== undefined && d.amount1 !== undefined) {
-              const a0 = Math.abs(Number(d.amount0));
-              const a1 = Math.abs(Number(d.amount1));
-              price = a0 > 0 ? a1 / a0 : 0;
-              baseVol += a0;
-              quoteVol += a1;
-            }
-            // Use sqrtPriceX96 as fallback for price
-            if (price === 0 && d.sqrtPriceX96) {
+            // v3: use sqrtPriceX96 as PRIMARY price source (amount0/amount1 are int256,
+            // negative values wrap to near uint256.max, making a1/a0 garbage)
+            if (d.sqrtPriceX96) {
               const sqrtP = Number(d.sqrtPriceX96) / (2 ** 96);
               price = sqrtP * sqrtP;
             }
-            // Use tick as last resort
+            // Fallback to tick
             if (price === 0 && d.tick !== undefined && d.tick !== null) {
               price = Math.pow(1.0001, Number(d.tick));
+            }
+            // amount0/amount1 ONLY for volume tracking
+            if (d.amount0 !== undefined && d.amount1 !== undefined) {
+              const raw0 = BigInt(d.amount0);
+              const raw1 = BigInt(d.amount1);
+              const MAX = BigInt(2) ** BigInt(255);
+              const a0 = raw0 > MAX ? Number(BigInt(2) ** BigInt(256) - raw0) : Number(raw0);
+              const a1 = raw1 > MAX ? Number(BigInt(2) ** BigInt(256) - raw1) : Number(raw1);
+              baseVol += Math.abs(a0);
+              quoteVol += Math.abs(a1);
             }
           }
 
