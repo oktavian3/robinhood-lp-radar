@@ -1,47 +1,120 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { apiGet, fmtAddr, fmtTimeAgo } from '@/lib/api';
-import type { Position } from '@/types';
+import { apiGet, fmtAddr, fmtUsd } from '@/lib/api';
 
-export default function PositionsPage() {
-  const [positions, setPositions] = useState<Position[]>([]);
+type PaperPosition = {
+  id: number;
+  poolAddress: string | null;
+  token0: string;
+  token1: string;
+  strategy: string | null;
+  initial_capital_usd: number;
+  status: string;
+  opened_at: string;
+  latestSnapshot: {
+    position_value_usd: number;
+    accrued_fees_usd: number;
+    impermanent_loss_usd: number;
+    net_pnl_usd: number;
+    in_range: boolean;
+  } | null;
+};
+
+export default function Positions() {
+  const [positions, setPositions] = useState<PaperPosition[]>([]);
+
   useEffect(() => {
     async function load() {
-      try { const d = await apiGet<{ positions: Position[] }>('/positions'); setPositions(d.positions || []); } catch (e) { console.error(e); }
+      try {
+        const d = await apiGet<{ positions: PaperPosition[] }>('/positions');
+        setPositions(d.positions || []);
+      } catch {}
     }
-    load(); const iv = setInterval(load, 15000); return () => clearInterval(iv);
+    load();
+    const iv = setInterval(load, 15000);
+    return () => clearInterval(iv);
   }, []);
 
-  if (positions.length === 0) return <div className="card"><h3>Paper Positions</h3><div style={{ color: 'var(--muted)', padding: 16, textAlign: 'center' }}>No active positions</div></div>;
+  const totalValue = positions.reduce((s, p) => s + (p.latestSnapshot?.position_value_usd ?? 0), 0);
+  const totalFees = positions.reduce((s, p) => s + (p.latestSnapshot?.accrued_fees_usd ?? 0), 0);
+  const totalPnl = positions.reduce((s, p) => s + (p.latestSnapshot?.net_pnl_usd ?? 0), 0);
+  const inRange = positions.filter(p => p.latestSnapshot?.in_range).length;
 
   return (
-    <div className="card">
-      <h3>Paper Positions</h3>
-      <div style={{ overflow: 'auto', marginTop: 8 }}>
-        <table>
-          <thead><tr><th>Pool</th><th>Strategy</th><th>Capital</th><th>Value</th><th>PnL</th><th>Fees</th><th>IL</th><th>In Range</th><th>Age</th><th>Status</th></tr></thead>
-          <tbody>
-            {positions.map((p, i) => {
-              const s = p.latestSnapshot || {};
-              const pnl = Number(s.net_pnl_usd || 0);
-              return (
-                <tr key={i}>
-                  <td>{fmtAddr(p.token0)}/{fmtAddr(p.token1)}</td>
-                  <td>{p.strategy?.replace(/_/g, ' ').slice(0, 15)}</td>
-                  <td>${Number(p.initial_capital_usd).toFixed(0)}</td>
-                  <td>${Number(s.position_value_usd || 0).toFixed(0)}</td>
-                  <td style={{ color: pnl >= 0 ? 'var(--green)' : 'var(--red)' }}>{pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}</td>
-                  <td>${Number(s.accrued_fees_usd || 0).toFixed(2)}</td>
-                  <td>${Number(s.impermanent_loss_usd || 0).toFixed(2)}</td>
-                  <td>{s.in_range ? '🟢' : '🔴'}</td>
-                  <td style={{ fontSize: 10 }}>{fmtTimeAgo(p.opened_at)}</td>
-                  <td>{p.status}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+    <>
+      {/* Summary stats */}
+      <div className="stats-grid">
+        <div className="card">
+          <div className="card-label">Active Positions</div>
+          <div className="card-value">{positions.length}</div>
+        </div>
+        <div className="card">
+          <div className="card-label">Total Value</div>
+          <div className="card-value" style={{ color: 'var(--lime)' }}>${fmtUsd(totalValue)}</div>
+        </div>
+        <div className="card">
+          <div className="card-label">Accrued Fees</div>
+          <div className="card-value" style={{ color: 'var(--positive)' }}>${fmtUsd(totalFees)}</div>
+        </div>
+        <div className="card">
+          <div className="card-label">Net PnL</div>
+          <div className="card-value" style={{ color: totalPnl >= 0 ? 'var(--positive)' : 'var(--negative)' }}>
+            {totalPnl >= 0 ? '+' : ''}${fmtUsd(totalPnl)}
+          </div>
+        </div>
+        <div className="card">
+          <div className="card-label">In Range</div>
+          <div className="card-value" style={{ color: 'var(--positive)' }}>
+            {inRange}/{positions.length}
+          </div>
+        </div>
       </div>
-    </div>
+
+      {/* Positions table */}
+      <div className="card">
+        <div className="card-label">Paper Positions</div>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Pool</th>
+                <th>Capital</th>
+                <th>Value</th>
+                <th>PnL</th>
+                <th>Fees</th>
+                <th>IL</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {positions.length === 0 && (
+                <tr><td colSpan={7} style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
+                  No active paper positions
+                </td></tr>
+              )}
+              {positions.map(p => {
+                const s = p.latestSnapshot || {};
+                const pnl = Number(s.net_pnl_usd || 0);
+                return (
+                  <tr key={p.id}>
+                    <td>
+                      <b>{fmtAddr(p.token0)}</b>/{fmtAddr(p.token1)}
+                    </td>
+                    <td>${fmtUsd(p.initial_capital_usd)}</td>
+                    <td>${fmtUsd(s.position_value_usd ?? 0)}</td>
+                    <td style={{ color: pnl >= 0 ? 'var(--positive)' : 'var(--negative)', fontWeight: 600 }}>
+                      {pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}
+                    </td>
+                    <td style={{ color: 'var(--positive)' }}>${fmtUsd(s.accrued_fees_usd ?? 0)}</td>
+                    <td style={{ color: 'var(--negative)' }}>${fmtUsd(s.impermanent_loss_usd ?? 0)}</td>
+                    <td>{s.in_range ? '🟢 In Range' : '🔴 Out of Range'}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </>
   );
 }
