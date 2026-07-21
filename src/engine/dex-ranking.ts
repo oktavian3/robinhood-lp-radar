@@ -287,13 +287,30 @@ async function refreshDexCache(): Promise<void> {
       logger.info(`[DexRanking] Per-pool fallback complete: ${candidates.length} pools checked`);
     }
 
-    // 5. Sort: APR desc → volume desc → TVL desc
+    // 5. Sort: practicality first
+    // Weighted score: penalize tiny TVL pools, reward volume+TVL combo
     enriched.sort((a, b) => {
+      const aTvl = a.tvl_usd ?? 0;
+      const bTvl = b.tvl_usd ?? 0;
+      const aVol = a.volume_24h ?? 0;
+      const bVol = b.volume_24h ?? 0;
+      
+      // Filter out pools with TVL < $2k (micro-cap)
+      // They rank below any pool with meaningful TVL
+      if (aTvl < 2000 && bTvl >= 2000) return 1;
+      if (bTvl < 2000 && aTvl >= 2000) return -1;
+      
+      // Primary: TVL × Volume (liquidity score) — rewards both size AND activity
+      const aLiqScore = Math.log10(aTvl * Math.max(aVol, 1) + 1);
+      const bLiqScore = Math.log10(bTvl * Math.max(bVol, 1) + 1);
+      if (Math.abs(aLiqScore - bLiqScore) > 0.1) return bLiqScore - aLiqScore;
+      
+      // Secondary: APR
       const aprDiff = (b.apr_pct ?? 0) - (a.apr_pct ?? 0);
       if (aprDiff !== 0) return aprDiff;
-      const volDiff = (b.volume_24h ?? 0) - (a.volume_24h ?? 0);
-      if (volDiff !== 0) return volDiff;
-      return (b.tvl_usd ?? 0) - (a.tvl_usd ?? 0);
+      
+      // Tertiary: TVL desc
+      return bTvl - aTvl;
     });
 
     cachedResult = enriched;
