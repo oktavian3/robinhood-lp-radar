@@ -1,0 +1,35 @@
+:root{--bg:#0a0a0f;--card:#12121a;--border:#1e1e2e;--green:#22c55e;--yellow:#eab308;--red:#ef4444;--text:#e2e8f0;--muted:#64748b;--accent:#6366f1}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'SF Mono','Fira Code',monospace;padding:20px}
+.header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid var(--border)}
+.header h1{font-size:18px;color:var(--accent)}
+.header .status{font-size:12px;color:var(--muted)}
+.grid{display:grid;gap:16px}
+.grid-5{grid-template-columns:repeat(5,1fr)}
+.grid-2{grid-template-columns:1fr 1fr}
+.card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px}
+.card h3{font-size:11px;text-transform:uppercase;color:var(--muted);margin-bottom:8px;letter-spacing:1px}
+.card .value{font-size:24px;font-weight:700}
+.card .sub{font-size:11px;color:var(--muted);margin-top:4px}
+.card.verdict{background:rgba(34,197,94,0.03)}
+table{width:100%;font-size:12px;border-collapse:collapse}
+th{text-align:left;padding:6px;color:var(--muted);font-size:10px;text-transform:uppercase;border-bottom:1px solid var(--border)}
+td{padding:6px;border-bottom:1px solid var(--border)}
+tr:hover td{background:rgba(99,102,241,0.05)}
+.tag{padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600}
+.tag-v2{background:#3b0764;color:#c084fc}
+.tag-v3{background:#0f3b3b;color:#5eead4}
+.tag-v4{background:#1a1a3e;color:#818cf8}
+.addr{font-size:10px;color:var(--muted)}
+.nav{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.nav button{background:var(--card);border:1px solid var(--border);color:var(--muted);padding:6px 14px;border-radius:6px;font-family:inherit;font-size:11px;cursor:pointer}
+.nav button.active{color:var(--accent);border-color:var(--accent)}
+.search-row{display:flex;gap:8px;margin-top:8px}
+.search-row input{flex:1;background:var(--card);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:6px;font-family:inherit;font-size:12px}
+.search-row input:focus{outline:1px solid var(--accent)}
+.btn-primary{background:var(--accent);border:none;color:#fff;padding:8px 16px;border-radius:6px;cursor:pointer;font-family:inherit;font-size:12px}
+.btn-primary:disabled{opacity:0.5}
+.info-grid{display:grid;gap:4px;margin-top:8px}
+.info-grid>div{display:flex;justify-content:space-between;padding:4px 0}
+.info-grid .label{color:var(--muted)}
+.info-grid .val{font-weight:600}

@@ -1,0 +1,12 @@
+/** @type {import('next').NextConfig} */
+const path = require('path');
+const nextConfig = {
+  output: 'export',
+  images: { unoptimized: true },
+  outputFileTracingRoot: path.join(__dirname, '..'),
+  experimental: { webpackBuildWorker: false },
+  env: {
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:7474',
+  },
+};
+module.exports = nextConfig;
