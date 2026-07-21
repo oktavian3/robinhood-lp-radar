@@ -1,12 +1,11 @@
 /**
  * DEX-based ranking engine — ranks pools by real volume, TVL, APR from DEX Screener.
- * For LP farming: APR is the primary metric.
+ * Uses BATCH search endpoint (1 API call for all Robinhood pools) instead of per-pool fetches.
  * 
  * Uses server-side result caching with 5-minute TTL so API calls are fast.
- * Background pre-warm: fetches DEX data for all active pools (takes ~30s first time).
  */
 import { query } from "../db/index.js";
-import { fetchPoolDexData, computeApr } from "../lib/dex-volume.js";
+import { computeApr } from "../lib/dex-volume.js";
 import { logger } from "../lib/logger.js";
 
 export type DexRankedPool = {
@@ -41,7 +40,7 @@ export type DexRankedPool = {
 let cachedResult: DexRankedPool[] | null = null;
 let lastCacheTime = 0;
 const CACHE_TTL_MS = 300_000; // 5 minutes
-let prewarmPromise: Promise<void> | null = null;
+let refreshPromise: Promise<void> | null = null;
 
 /**
  * Get top N pools ranked by DEX Screener data.
@@ -50,27 +49,27 @@ let prewarmPromise: Promise<void> | null = null;
 export async function getDexRankedPools(limit = 10): Promise<DexRankedPool[]> {
   const now = Date.now();
   
-  // Return cache if fresh AND has enough data
+  // Return cache if fresh
   if (cachedResult && (now - lastCacheTime) < CACHE_TTL_MS) {
     return cachedResult.slice(0, limit);
   }
   
-  // If cache expired or empty, trigger pre-warm (non-blocking)
-  if (!prewarmPromise) {
-    prewarmPromise = prewarmDexCache().finally(() => { prewarmPromise = null; });
+  // Trigger background refresh if not already running
+  if (!refreshPromise) {
+    refreshPromise = refreshDexCache().finally(() => { refreshPromise = null; });
   }
   
-  // Return stale cache while pre-warming, but only if we have enough data
-  if (cachedResult && cachedResult.length >= 10) {
+  // Return stale cache while refreshing
+  if (cachedResult && cachedResult.length > 0) {
     return cachedResult.slice(0, limit);
   }
   
-  // First ever call — wait for at least some data
-  if (prewarmPromise) {
+  // First ever call — wait for refresh (max 30s)
+  if (refreshPromise) {
     try {
       await Promise.race([
-        prewarmPromise,
-        new Promise(r => setTimeout(r, 30000)) // max 30s wait
+        refreshPromise,
+        new Promise(r => setTimeout(r, 30000))
       ]);
     } catch { /* ignore */ }
   }
@@ -78,49 +77,102 @@ export async function getDexRankedPools(limit = 10): Promise<DexRankedPool[]> {
 }
 
 /**
- * Background pre-warm: fetches DEX data for all active pools.
- * ~30-50s for 200 pools at 250ms intervals, but cache fills progressively.
+ * Fetch ALL Robinhood Chain pools from DEX Screener in a single API call.
+ * Then match them to our DB pools by pool_address.
  */
-async function prewarmDexCache(): Promise<void> {
+async function refreshDexCache(): Promise<void> {
   try {
-    const { rows: pools } = await query(`
+    // 1. Get all pools from our DB
+    const { rows: dbPools } = await query(`
       SELECT id, protocol, pool_address, pool_id, token0, token1, fee, tick_spacing, hooks
       FROM pools
       WHERE status IN ('discovered', 'active')
       ORDER BY id ASC
     `);
 
-    if (pools.length === 0) {
+    if (dbPools.length === 0) {
       cachedResult = [];
       lastCacheTime = Date.now();
       return;
     }
 
-    logger.info(`[DexRanking] Fetching DEX data for ${pools.length} pools (incl. v4)...`);
+    logger.info(`[DexRanking] Fetching DEX Screener batch data for ${dbPools.length} pools...`);
 
-    // Process newer pools first (v4, higher IDs tend to have more volume)
-    pools.reverse();
+    // 2. Fetch ALL Robinhood pools from DEX Screener in 1 call
+    const dexRes = await fetch(
+      "https://api.dexscreener.com/latest/dex/search?q=robinhood",
+      { signal: AbortSignal.timeout(15000) }
+    );
+    
+    if (!dexRes.ok) {
+      logger.warn(`[DexRanking] DEX Screener batch HTTP ${dexRes.status}`);
+      if (cachedResult) return; // keep stale cache
+      cachedResult = [];
+      lastCacheTime = Date.now();
+      return;
+    }
 
-    // Process in batches: first 20 immediately, then rest with 100ms delay
-    const batchSize = 20;
-    const enriched: DexRankedPool[] = [];
+    const dexBody = await dexRes.json();
+    const allPairs: any[] = (dexBody?.pairs || []).filter(
+      (p: any) => p.chainId === 'robinhood'
+    );
 
-    for (let i = 0; i < pools.length; i++) {
-      const p = pools[i];
-      // v2/v3 use pool_address, v4 uses pool_id
-      const lookupKey = (p.protocol === 'v4' && p.pool_id) ? p.pool_id : p.pool_address;
-      if (!lookupKey) continue; // skip pools with no identifier
-
-      // Default fee for pools without fee data (Uniswap default: 0.30% = 3000 bps)
-      const effectiveFee = p.fee ?? 3000;
-
-      const dexData = await fetchPoolDexData(lookupKey);
+    // 3. Build map: pool_address (lowercase) → DEX data
+    const dexByAddress = new Map<string, any>();
+    const dexByUrl = new Map<string, any>();
+    
+    for (const pair of allPairs) {
+      const addr = (pair.pairAddress || '').toLowerCase();
+      if (addr) dexByAddress.set(addr, pair);
       
-      const apr = dexData ? computeApr(dexData.volume24hUsd, effectiveFee, dexData.tvlUsd) : null;
-      const vol = dexData?.volume24hUsd ?? 0;
-      const tvl = dexData?.tvlUsd ?? 0;
+      // Also index by URL-extracted address (DEX Screener sometimes changes address casing)
+      const url = pair.url || '';
+      const urlMatch = url.match(/\/robinhood\/(0x[a-f0-9]+)/i);
+      if (urlMatch) dexByUrl.set(urlMatch[1].toLowerCase(), pair);
+    }
 
-      // Compute score
+    logger.info(`[DexRanking] DEX Screener returned ${allPairs.length} Robinhood pairs, ${dexByAddress.size} indexed by address`);
+
+    // 4. Enrich our pools with DEX data
+    // HYBRID approach:
+    //   A) Batch match — pools found in DEX Screener search results (free, instant)
+    //   B) Per-pool fallback — pools NOT found, fetch via per-pair endpoint (rate-limited)
+    const effectiveFee = 3000; // default 0.3% for pools without fee data (3000/1e6 = 0.003)
+    const enriched: DexRankedPool[] = [];
+    const needsPerPool: typeof dbPools = [];
+
+    for (const p of dbPools) {
+      const lookupKey = (p.protocol === 'v4' && p.pool_id)
+        ? String(p.pool_id) : (p.pool_address || '').toLowerCase();
+      
+      let dexData = dexByAddress.get(lookupKey) || dexByUrl.get(lookupKey);
+      
+      // For v4 pools, try matching by token addresses
+      if (!dexData && p.protocol === 'v4' && p.pool_id) {
+        for (const pair of allPairs) {
+          const baseAddr = (pair.baseToken?.address || '').toLowerCase();
+          const quoteAddr = (pair.quoteToken?.address || '').toLowerCase();
+          const pToken0 = (p.token0 || '').toLowerCase();
+          const pToken1 = (p.token1 || '').toLowerCase();
+          if ((baseAddr === pToken0 && quoteAddr === pToken1) ||
+              (baseAddr === pToken1 && quoteAddr === pToken0)) {
+            dexData = pair;
+            break;
+          }
+        }
+      }
+
+      if (!dexData && p.pool_address) {
+        needsPerPool.push(p); // queue for per-pool fetch
+        continue;
+      }
+
+      // Parse DEX data
+      const vol = dexData ? (dexData.volume?.h24 ?? 0) : 0;
+      const tvl = dexData ? (dexData.liquidity?.usd ?? 0) : 0;
+      const fee = p.fee ?? effectiveFee;
+      const apr = (vol > 0 && tvl > 0) ? computeApr(vol, fee, tvl) : null;
+
       let score = 0;
       if (apr !== null && apr > 0) {
         score = Math.min(50, Math.round(apr / 2));
@@ -131,13 +183,11 @@ async function prewarmDexCache(): Promise<void> {
       else if (tvl >= 100) score += 5;
       if (p.protocol === "v3") score += 5;
 
-      // Risk flags
       const riskFlags: string[] = [];
       if (vol < 100) riskFlags.push("LOW_VOLUME");
       if (tvl < 1000) riskFlags.push("LOW_LIQUIDITY");
       if (apr === null || apr === 0) riskFlags.push("NO_APR_DATA");
 
-      // Confidence
       const confidence = Math.min(100, Math.round(
         20 + (vol > 10000 ? 40 : vol > 1000 ? 25 : vol > 100 ? 10 : 0) +
         (tvl > 10000 ? 20 : tvl > 1000 ? 15 : tvl > 100 ? 5 : 0) +
@@ -157,40 +207,102 @@ async function prewarmDexCache(): Promise<void> {
         tvl_usd: tvl > 0 ? tvl : null, apr_pct: apr,
         fdv_usd: dexData?.fdv ?? null,
         market_cap: dexData?.marketCap ?? null,
-        price_usd: dexData?.priceUsd ?? null,
+        price_usd: dexData?.priceUsd ? parseFloat(dexData.priceUsd) : null,
         price_change_24h: dexData?.priceChange?.h24 ?? null,
         price_change_6h: dexData?.priceChange?.h6 ?? null,
         base_token_symbol: dexData?.baseToken?.symbol ?? null,
         quote_token_symbol: dexData?.quoteToken?.symbol ?? null,
-        txns_24h: dexData ? (dexData.txns24h.buys + dexData.txns24h.sells) : null,
-        boosts: dexData?.boostsActive ?? null,
-        dex_txns_24h: dexData?.txns24h ?? null,
+        txns_24h: dexData ? (dexData.txns?.h24?.buys ?? 0) + (dexData.txns?.h24?.sells ?? 0) : null,
+        boosts: dexData?.boosts?.active ?? null,
+        dex_txns_24h: dexData?.txns?.h24 ?? null,
       });
-
-      // Every batch: update cache with partial results (progressive)
-      if ((i + 1) % batchSize === 0 || i === pools.length - 1) {
-        // Sort by APR desc → volume desc → TVL desc
-        enriched.sort((a, b) => {
-          const aprDiff = (b.apr_pct ?? 0) - (a.apr_pct ?? 0);
-          if (aprDiff !== 0) return aprDiff;
-          const volDiff = (b.volume_24h ?? 0) - (a.volume_24h ?? 0);
-          if (volDiff !== 0) return volDiff;
-          return (b.tvl_usd ?? 0) - (a.tvl_usd ?? 0);
-        });
-
-        cachedResult = [...enriched];
-        lastCacheTime = Date.now();
-        logger.info(`[DexRanking] Cache update: ${enriched.length} pools, #1 APR=${enriched[0]?.apr_pct}% vol=${enriched[0]?.volume_24h}`);
-      }
-
-      // Delay between requests
-      await new Promise(r => setTimeout(r, 250)); // 250ms = 240 req/min (under 300 DEX rate limit)
     }
 
-    logger.info(`[DexRanking] Pre-warm complete: ${enriched.length} pools ranked`);
+    // 4B. Per-pool fallback for pools not in batch search results
+    if (needsPerPool.length > 0) {
+      logger.info(`[DexRanking] Fallback per-pool fetch for ${needsPerPool.length} pools...`);
+      const { fetchPoolDexData } = await import("../lib/dex-volume.js");
+      
+      // Only process pools that have volume potential (skip ones with no pool_address)
+      const candidates = needsPerPool.slice(0, 30); // max 30 to stay within rate limits
+      
+      for (const p of candidates) {
+        const lookupKey = p.pool_address;
+        if (!lookupKey) continue;
+        
+        try {
+          const dexData = await fetchPoolDexData(lookupKey);
+          const vol = dexData?.volume24hUsd ?? 0;
+          const tvl = dexData?.tvlUsd ?? 0;
+          const fee = p.fee ?? effectiveFee;
+          const apr = (vol > 0 && tvl > 0) ? computeApr(vol, fee, tvl) : null;
+
+          let score = 0;
+          if (apr !== null && apr > 0) score = Math.min(50, Math.round(apr / 2));
+          else if (vol > 0) score = Math.min(30, Math.round(vol / 1000));
+          if (tvl >= 1000) score += 10;
+          else if (tvl >= 100) score += 5;
+          if (p.protocol === "v3") score += 5;
+
+          const riskFlags: string[] = [];
+          if (vol < 100) riskFlags.push("LOW_VOLUME");
+          if (tvl < 1000) riskFlags.push("LOW_LIQUIDITY");
+          if (apr === null || apr === 0) riskFlags.push("NO_APR_DATA");
+
+          const confidence = Math.min(100, Math.round(
+            20 + (vol > 10000 ? 40 : vol > 1000 ? 25 : vol > 100 ? 10 : 0) +
+            (tvl > 10000 ? 20 : tvl > 1000 ? 15 : tvl > 100 ? 5 : 0) +
+            (apr !== null && apr > 0 ? 20 : 0)
+          ));
+
+          let riskLevel: "low" | "medium" | "high" = "high";
+          if (confidence >= 60 && tvl >= 10000) riskLevel = "low";
+          else if (confidence >= 30) riskLevel = "medium";
+
+          enriched.push({
+            poolId: p.id, protocol: p.protocol, poolAddress: p.pool_address,
+            token0: p.token0, token1: p.token1,
+            fee: p.fee, tickSpacing: p.tick_spacing, hooks: p.hooks,
+            score: Math.min(100, score), confidence, riskLevel, riskFlags,
+            volume_24h: vol > 0 ? vol : null,
+            tvl_usd: tvl > 0 ? tvl : null, apr_pct: apr,
+            fdv_usd: dexData?.fdv ?? null,
+            market_cap: dexData?.marketCap ?? null,
+            price_usd: dexData?.priceUsd ?? null,
+            price_change_24h: dexData?.priceChange?.h24 ?? null,
+            price_change_6h: dexData?.priceChange?.h6 ?? null,
+            base_token_symbol: dexData?.baseToken?.symbol ?? null,
+            quote_token_symbol: dexData?.quoteToken?.symbol ?? null,
+            txns_24h: dexData ? (dexData.txns24h.buys + dexData.txns24h.sells) : null,
+            boosts: dexData?.boostsActive ?? null,
+            dex_txns_24h: dexData?.txns24h ?? null,
+          });
+        } catch (err) {
+          logger.debug(`[DexRanking] Per-pool fetch failed for ${lookupKey}: ${err}`);
+        }
+        
+        // Rate limit: 250ms between per-pool calls
+        await new Promise(r => setTimeout(r, 250));
+      }
+      logger.info(`[DexRanking] Per-pool fallback complete: ${candidates.length} pools checked`);
+    }
+
+    // 5. Sort: APR desc → volume desc → TVL desc
+    enriched.sort((a, b) => {
+      const aprDiff = (b.apr_pct ?? 0) - (a.apr_pct ?? 0);
+      if (aprDiff !== 0) return aprDiff;
+      const volDiff = (b.volume_24h ?? 0) - (a.volume_24h ?? 0);
+      if (volDiff !== 0) return volDiff;
+      return (b.tvl_usd ?? 0) - (a.tvl_usd ?? 0);
+    });
+
+    cachedResult = enriched;
+    lastCacheTime = Date.now();
+    const top = enriched[0];
+    logger.info(`[DexRanking] Batch refresh: ${enriched.length} pools, #1=${top?.base_token_symbol || '?'}/${top?.quote_token_symbol || '?'} APR=${top?.apr_pct}% TVL=$${top?.tvl_usd}`);
+
   } catch (err) {
-    logger.error(`[DexRanking] Pre-warm error: ${err}`);
-    // Keep stale cache if exists
+    logger.error(`[DexRanking] Batch refresh error: ${err}`);
     if (!cachedResult) {
       cachedResult = [];
       lastCacheTime = Date.now();
