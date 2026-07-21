@@ -1,0 +1,87 @@
+{
+  "version": 1,
+  "network": "robinhood",
+  "sources": [
+    {
+      "id": "rpc",
+      "priority": 1,
+      "role": [
+        "blocks",
+        "logs",
+        "contract_state",
+        "pool_state",
+        "position_state"
+      ],
+      "baseUrlEnv": "ROBINHOOD_RPC_URL",
+      "websocketEnv": "ROBINHOOD_WSS_URL",
+      "required": true,
+      "refresh": "every block",
+      "sourceOfTruth": true
+    },
+    {
+      "id": "chainlink",
+      "priority": 2,
+      "role": [
+        "reference_price",
+        "stock_token_price",
+        "oracle_status"
+      ],
+      "required": true,
+      "refresh": "per ranking cycle and position check",
+      "sourceOfTruth": true,
+      "notes": [
+        "Check decimals, updatedAt, heartbeat, sequencer uptime, oraclePaused, and uiMultiplier."
+      ]
+    },
+    {
+      "id": "dexscreener",
+      "priority": 4,
+      "role": [
+        "pair_discovery",
+        "quick_liquidity_snapshot",
+        "volume_snapshot",
+        "metadata"
+      ],
+      "baseUrl": "https://api.dexscreener.com",
+      "chainId": "robinhood",
+      "auth": "none",
+      "rateLimits": {
+        "pairAndTokenEndpointsPerMinute": 300,
+        "profileAndBoostEndpointsPerMinute": 60
+      },
+      "sourceOfTruth": false
+    },
+    {
+      "id": "coingecko_onchain",
+      "priority": 3,
+      "role": [
+        "pool_discovery",
+        "ohlcv_backfill",
+        "trades_backfill",
+        "token_holders",
+        "external_pool_snapshot"
+      ],
+      "baseUrlEnv": "COINGECKO_API_BASE",
+      "networkId": "robinhood",
+      "authEnv": "COINGECKO_API_KEY",
+      "sourceOfTruth": false
+    },
+    {
+      "id": "uniswap_api",
+      "priority": 5,
+      "role": [
+        "lp_simulation",
+        "gas_estimate",
+        "transaction_preparation",
+        "swap_quote"
+      ],
+      "authEnv": "UNISWAP_API_KEY",
+      "liquidityBase": "https://liquidity.api.uniswap.org",
+      "tradeBase": "https://trade-api.gateway.uniswap.org/v1",
+      "sourceOfTruth": false,
+      "notes": [
+        "Never use API output as the sole basis of ranking or range calculation."
+      ]
+    }
+  ]
+}

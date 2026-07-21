@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Robinhood LP Radar — Phase 4</title>
+<style>
+:root{--bg:#0a0a0f;--card:#12121a;--border:#1e1e2e;--green:#22c55e;--yellow:#eab308;--red:#ef4444;--text:#e2e8f0;--muted:#64748b;--accent:#6366f1}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'SF Mono','Fira Code',monospace;padding:20px}
+.header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid var(--border)}
+.header h1{font-size:18px;color:var(--accent)}
+.header .status{font-size:12px;color:var(--muted)}
+.grid{display:grid;gap:16px}
+.grid-5{grid-template-columns:repeat(5,1fr)}
+.grid-2{grid-template-columns:1fr 1fr}
+.card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px}
+.card h3{font-size:11px;text-transform:uppercase;color:var(--muted);margin-bottom:8px;letter-spacing:1px}
+.card .value{font-size:24px;font-weight:700}
+.card .sub{font-size:11px;color:var(--muted);margin-top:4px}
+table{width:100%;font-size:12px;border-collapse:collapse}
+th{text-align:left;padding:6px;color:var(--muted);font-size:10px;text-transform:uppercase;border-bottom:1px solid var(--border)}
+td{padding:6px;border-bottom:1px solid var(--border)}
+tr:hover td{background:rgba(99,102,241,0.05)}
+.tag{padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600}
+.tag-v2{background:#3b0764;color:#c084fc}
+.tag-v3{background:#0f3b3b;color:#5eead4}
+.tag-v4{background:#1a1a3e;color:#818cf8}
+.addr{font-size:10px;color:var(--muted)}
+.lastupd{font-size:11px;color:var(--muted);text-align:center;margin-top:24px;padding-top:16px;border-top:1px solid var(--border)}
+input{background:var(--card);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:6px;font-family:inherit;font-size:12px;width:100%}
+input:focus{outline:1px solid var(--accent)}
+.search-res{font-size:12px;padding:8px 0}
+.nav{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.nav button{background:var(--card);border:1px solid var(--border);color:var(--muted);padding:6px 14px;border-radius:6px;font-family:inherit;font-size:11px;cursor:pointer}
+.nav button.active{color:var(--accent);border-color:var(--accent)}
+.section{display:none}
+.section.active{display:block}
+</style>
+</head>
+<body>
+<div class="header">
+  <div><h1>🔭 Robinhood LP Radar</h1><div class="status">Phase 4 — Full Pipeline</div></div>
+  <div><span id="blockInfo" class="status">Block: --</span></div>
+</div>
+
+<div class="nav">
+  <button class="active" onclick="showTab('overview')">Overview</button>
+  <button onclick="showTab('rankings')">Top 10</button>
+  <button onclick="showTab('ranges')">Range Engine</button>
+  <button onclick="showTab('trending')">Trending</button>
+  <button onclick="showTab('range')">Range</button>
+  <button onclick="showTab('positions')">Positions</button>
+  <button onclick="showTab('track')">Track Record</button>
+  <button onclick="showTab('search')">Search</button>
+</div>
+
+<!-- OVERVIEW -->
+<div id="tab-overview" class="section active">
+  <div class="grid grid-5">
+    <div class="card"><h3>Pools</h3><div class="value" id="totalPools">--</div></div>
+    <div class="card"><h3>Active</h3><div class="value" id="activePools" style="color:var(--green)">--</div></div>
+    <div class="card"><h3>Rejected</h3><div class="value" id="rejectedPools" style="color:var(--red)">--</div></div>
+    <div class="card"><h3>Top Score</h3><div class="value" id="topScore">--</div></div>
+    <div class="card"><h3>Positions</h3><div class="value" id="positionCount">0</div></div>
+  </div>
+  <div class="card" style="margin-top:16px">
+    <h3>Data Source Health</h3>
+    <div id="sourceHealth" style="font-size:12px"></div>
+  </div>
+</div>
+
+<!-- RANKINGS -->
+<div id="tab-rankings" class="section">
+  <div class="card">
+    <h3>Top 10 Scored Pools</h3>
+    <div style="overflow:auto;margin-top:8px">
+      <table><thead><tr><th>#</th><th>Pair</th><th>Proto</th><th>Score</th><th>Vol 24h</th><th>TVL</th><th>APR</th><th>FDV</th><th>Txns</th><th>Conf</th></tr></thead>
+      <tbody id="top10Body"></tbody></table>
+    </div>
+  </div>
+</div>
+
+<!-- RANGES (on-chain candle based) -->
+<div id="tab-ranges" class="section">
+  <div class="card">
+    <h3>Range Engine — Best Setups</h3>
+    <div style="overflow:auto;margin-top:8px">
+      <table><thead><tr><th>Pool</th><th>Strategy</th><th>Lower</th><th>Upper</th><th>Ticks</th><th>In Range</th><th>24h Prob</th><th>Fees</th><th>Net</th><th>vs Hold</th><th>Conf</th><th>Duration</th></tr></thead>
+      <tbody id="rangeBody"></tbody></table>
+    </div>
+  </div>
+</div>
+
+<!-- TRENDING -->
+<div id="tab-trending" class="section">
+  <div class="card">
+    <h3>🔥 Trending Tokens — Robinhood Chain</h3>
+    <div style="overflow:auto;margin-top:8px">
+      <table><thead><tr><th>#</th><th>Token</th><th>Vol 24h</th><th>TVL</th><th>APR</th><th>MCap</th><th>Txns</th></tr></thead>
+      <tbody id="trendingBody"></tbody></table>
+    </div>
+    <div style="font-size:10px;color:var(--muted);margin-top:4px">Click any token for range analysis →</div>
+  </div>
+</div>
+
+<!-- RANGE (quick DEX-based) -->
+<div id="tab-range" class="section">
+  <div class="card">
+    <h3>🔥 Quick Range Analysis — DEX Screener</h3>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <input type="text" id="rangeTokenInput" placeholder="Token symbol or contract address (0x...)" style="flex:1" onkeydown="if(event.key==='Enter')doQuickRange()">
+      <button onclick="doQuickRange()" style="background:var(--accent);border:none;color:#fff;padding:8px 16px;border-radius:6px;cursor:pointer;font-family:inherit;font-size:12px">Analyze</button>
+    </div>
+  </div>
+  <div id="rangeQuickResults" style="margin-top:12px"></div>
+</div>
+
+<!-- POSITIONS -->
+<div id="tab-positions" class="section">
+  <div class="card">
+    <h3>Paper Positions</h3>
+    <div style="overflow:auto;margin-top:8px">
+      <table><thead><tr><th>Pool</th><th>Strategy</th><th>Capital</th><th>Value</th><th>PnL</th><th>Fees</th><th>IL</th><th>In Range</th><th>Age</th><th>Status</th></tr></thead>
+      <tbody id="positionBody"></tbody></table>
+    </div>
+  </div>
+</div>
+
+<!-- TRACK RECORD -->
+<div id="tab-track" class="section">
+  <div class="grid grid-5">
+    <div class="card"><h3>Recommendations</h3><div class="value" id="trTotal">--</div></div>
+    <div class="card"><h3>Win Rate</h3><div class="value" id="trWinRate" style="color:var(--green)">--</div></div>
+    <div class="card"><h3>Avg Fee</h3><div class="value" id="trFee">--</div></div>
+    <div class="card"><h3>Avg IL</h3><div class="value" id="trIl" style="color:var(--red)">--</div></div>
+    <div class="card"><h3>Avg Net</h3><div class="value" id="trNet">--</div></div>
+  </div>
+  <div class="card" style="margin-top:16px">
+    <h3>Performance by Strategy</h3>
+    <div id="trByStrategy" style="font-size:12px"></div>
+  </div>
+</div>
+
+<!-- SEARCH -->
+<div id="tab-search" class="section">
+  <div class="card">
+    <h3>Search by Contract Address</h3>
+    <input type="text" id="searchInput" placeholder="0x... (token, v2/v3 pool, or v4 pool ID)" onkeydown="if(event.key==='Enter')doSearch()">
+    <div id="searchResults" style="margin-top:12px"></div>
+  </div>
+</div>
+
+<div class="lastupd">Updated: <span id="lastUpdated">--</span> · auto-refresh 15s</div>
+
+<script>
+function showTab(name){document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('active'));document.getElementById('tab-'+name).classList.add('active');event.target.classList.add('active')}
+async function json(url){const r=await fetch(url);if(!r.ok)throw new Error(await r.text());return r.json()}
+function sn(a){return !a||a.length<20?a||'--':a.slice(0,6)+'...'+a.slice(-4)}
+function ta(d){return d?Math.floor((Date.now()-new Date(d))/1000)+'s ago':'never'}
+function sym(row, key){return row[key+'symbol']||row[key]?.slice(0,6)||'??'}
+
+async function doSearch(){
+  const q=document.getElementById('searchInput').value.trim();
+  if(!q||q.length<20){document.getElementById('searchResults').innerHTML='<div class="search-res" style="color:var(--red)">Enter a valid EVM address (0x...)</div>';return}
+  try{
+    const d=await json('/search?q='+q);
+    if(d.poolFound){
+      const p=d.pool;
+      const sym0=d.token0_symbol||sn(p.token0);
+      const sym1=d.token1_symbol||sn(p.token1);
+      document.getElementById('searchResults').innerHTML=`
+        <div class="search-res"><b>${sym0} / ${sym1}</b> | ${p.protocol} | fee=${p.fee?p.fee/10000+'%':'N/A'} | status=${p.status}</div>
+        ${d.ranges.length===0?'<div class="search-res" style="color:var(--muted)">Waiting for candle data...</div>':d.ranges.map((r,i)=>'<div class="search-res" style="padding-left:16px;border-left:2px solid var(--accent);margin:4px 0">#'+(i+1)+': <b>'+r.strategy+'</b> | '+r.lower+'-'+r.upper+' | ticks '+r.ticks+' | 24h='+r.prob24h+' | net='+r.net+' | conf='+r.confidence+'</div>').join('')}
+      `;
+    }else{
+      const tp=d.tokenPools||[];
+      const tokenSym=d.tokenSymbol||sn(q);
+      document.getElementById('searchResults').innerHTML=`
+        <div class="search-res"><b>${tokenSym}</b> — ${tp.length} pools ditemukan</div>
+        ${tp.map(p=>'<div class="search-res" style="padding-left:16px">'+p.protocol+' | <b>'+(p.token0_symbol||sn(p.token0))+'</b>/'+(p.token1_symbol||sn(p.token1))+' | fee='+(p.fee?p.fee/10000+'%':'N/A')+' | '+p.status+'</div>').join('')}
+        ${tp.length===0?'<div class="search-res" style="color:var(--muted)">No pools found for this address</div>':''}
+      `;
+    }
+  }catch(e){document.getElementById('searchResults').innerHTML='<div class="search-res" style="color:var(--red)">Error: '+e.message+'</div>'}
+}
+
+// ── Quick Range functions ──
+async function doQuickRange(){
+  const q=document.getElementById('rangeTokenInput').value.trim();
+  if(!q){document.getElementById('rangeQuickResults').innerHTML='<div class="card"><div style="color:var(--muted)">Enter a token symbol or contract address</div></div>';return}
+  document.getElementById('rangeQuickResults').innerHTML='<div class="card"><div style="color:var(--muted)">Analyzing '+q+'...</div></div>';
+  try{
+    const d=await json('/range-token?q='+encodeURIComponent(q));
+    renderRangeQuick(d);
+  }catch(e){document.getElementById('rangeQuickResults').innerHTML='<div class="card"><div style="color:var(--red)">Error: '+e.message+'</div></div>'}
+}
+
+function quickRangeFromTrend(addr,sym){
+  document.getElementById('rangeTokenInput').value=sym+' ('+addr.slice(0,6)+')';
+  showTab('range');
+  doQuickRange();
+}
+
+function renderRangeQuick(d){
+  const chg=d.priceChange24h!=null?(d.priceChange24h>0?'+':'')+d.priceChange24h+'%':'N/A';
+  const html=`
+    <div class="grid grid-2" style="margin-top:12px">
+      <div class="card">
+        <h3>${d.symbol} — Price Analysis</h3>
+        <div style="margin-top:8px">
+          <div style="display:flex;justify-content:space-between;padding:4px 0"><span style="color:var(--muted)">Price</span><span><b>$${Number(d.currentPrice).toFixed(6)}</b></span></div>
+          <div style="display:flex;justify-content:space-between;padding:4px 0"><span style="color:var(--muted)">24h Change</span><span style="color:${d.priceChange24h>0?'var(--green)':'var(--red)'}"><b>${chg}</b></span></div>
+          <div style="display:flex;justify-content:space-between;padding:4px 0"><span style="color:var(--muted)">Vol 24h</span><span><b>$${Number(d.vol24h).toLocaleString()}</b></span></div>
+          <div style="display:flex;justify-content:space-between;padding:4px 0"><span style="color:var(--muted)">TVL</span><span><b>$${Number(d.tvlUsd).toLocaleString()}</b></span></div>
+          <div style="display:flex;justify-content:space-between;padding:4px 0"><span style="color:var(--muted)">Est APR</span><span style="color:var(--green)"><b>${d.estApr.toFixed(1)}%</b></span></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Best Pool — ${d.bestPool.pair}</h3>
+        <div style="margin-top:8px;font-size:11px">
+          <div style="display:flex;justify-content:space-between;padding:4px 0"><span style="color:var(--muted)">Address</span><span class="addr">${d.bestPool.address.slice(0,10)}...${d.bestPool.address.slice(-6)}</span></div>
+          <div style="display:flex;justify-content:space-between;padding:4px 0"><span style="color:var(--muted)">Vol 24h</span><span><b>$${Number(d.bestPool.vol).toLocaleString()}</b></span></div>
+          <div style="display:flex;justify-content:space-between;padding:4px 0"><span style="color:var(--muted)">TVL</span><span><b>$${Number(d.bestPool.tvl).toLocaleString()}</b></span></div>
+          <div style="display:flex;justify-content:space-between;padding:4px 0"><span style="color:var(--muted)">Fee</span><span><b>${d.bestPool.fee/10000}% (${d.bestPool.fee}bps)</b></span></div>
+          <div style="display:flex;justify-content:space-between;padding:4px 0"><span style="color:var(--muted)">Vol/TVL</span><span><b>${d.volRatio.toFixed(1)}x</b></span></div>
+          <div style="margin-top:8px"><a href="${d.bestPool.dexUrl}" target="_blank" style="color:var(--accent);font-size:11px">Open on DEX Screener ↗</a></div>
+        </div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:12px">
+      <h3>Candidate Ranges — Adaptive ${(d.volFactor*100).toFixed(0)}% volatility factor</h3>
+      <div style="overflow:auto;margin-top:8px">
+        <table>
+          <thead><tr><th>#</th><th>Strategy</th><th>Lower Price</th><th>Upper Price</th><th>Tick Range</th><th>Spread</th><th>IL Est</th></tr></thead>
+          <tbody>
+            ${d.ranges.map(r=>{
+              const ilNum=parseFloat(r.il);
+              return '<tr><td>'+r.num+'</td><td><b>'+r.label+'</b></td><td>$'+r.lowerPrice.toFixed(6)+'</td><td>$'+r.upperPrice.toFixed(6)+'</td><td class="addr">'+r.tickLower+'/'+r.tickUpper+'</td><td>'+r.spreadPct+'%</td><td style="color:'+(ilNum<-10?'var(--red)':ilNum<-5?'var(--yellow)':'var(--green)')+'">'+r.il+'%</td></tr>';
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    ${d.allPools.length>1 ? '<div class="card" style="margin-top:12px"><h3>All Pools — '+d.symbol+'</h3><div style="overflow:auto;margin-top:8px"><table><thead><tr><th>#</th><th>Pool</th><th>Vol 24h</th><th>TVL</th><th>Fee</th></tr></thead><tbody>'+
+      d.allPools.slice(0,8).map((p,i)=>'<tr><td>'+(i+1)+'</td><td>'+p.pair+'</td><td>$'+Number(p.vol).toLocaleString()+'</td><td>$'+Number(p.tvl).toLocaleString()+'</td><td>'+(p.fee/10000)+'%</td></tr>').join('')+
+    '</tbody></table></div></div>' : ''}
+    <div class="card" style="margin-top:12px;border-left:3px solid ${d.volRatio>5?'var(--green)':d.volRatio>1?'var(--yellow)':'var(--red)'}">
+      <h3>Verdict</h3>
+      <div style="margin-top:8px;font-size:13px">
+        ${d.volRatio>5 ? '✅ <b>HIGH VOLUME</b> — Worth LPing! Vol/TVL '+d.volRatio.toFixed(1)+'x' : d.volRatio>1 ? '⚠️ <b>Moderate volume</b> ('+d.volRatio.toFixed(1)+'x) — start with Balanced' : '❌ <b>Low volume</b> ('+d.volRatio.toFixed(1)+'x) — not worth LPing'}
+      </div>
+      <div style="margin-top:8px;font-size:12px;color:var(--muted)">
+        ${d.volRatio>5 ? '→ Narrow: capital efficient, rebalance 6-12h<br>→ Balanced: best balance, rebalance 12-24h<br>→ Wide: safer, rebalance 24-48h' : ''}
+      </div>
+    </div>
+  `;
+  document.getElementById('rangeQuickResults').innerHTML=html;
+}
+
+async function refresh(){
+  try{
+    document.getElementById('lastUpdated').textContent=new Date().toLocaleTimeString();
+    const c=await json('/pools/counts');
+    document.getElementById('totalPools').textContent=c.total;
+    document.getElementById('activePools').textContent=c.eligible;
+    document.getElementById('rejectedPools').textContent=c.rejected;
+
+    const b=await json('/blocks/latest');
+    document.getElementById('blockInfo').textContent='Block: '+(b.latestStoredBlock?.toLocaleString()||'--');
+
+    const h=await json('/health');
+    document.getElementById('sourceHealth').innerHTML=h.sources.map(s=>{
+      const ok=s.last_success_at&&!s.last_error&&s.consecutive_failures<3;
+      const dot=ok?'🟢':s.last_failure_at?'🔴':s.last_success_at?'🟡':'⚪';
+      return '<div>'+dot+' '+s.source_id+' '+(ok?'OK':s.last_error||'pending')+'</div>';
+    }).join('');
+
+    const r=await json('/rankings');
+    const top=r.rankings||[];
+    document.getElementById('topScore').textContent=top.length>0?top[0].score:'--';
+    document.getElementById('top10Body').innerHTML=top.length===0
+      ?'<tr><td colspan="10" style="text-align:center;color:var(--muted)">Waiting for data accumulation...</td></tr>'
+      :top.slice(0,10).map((p,i)=>{
+        const vol=p.volume_24h?'$'+(p.volume_24h/1e3).toFixed(1)+'k':'--';
+        const tvl=p.tvl_usd?'$'+parseInt(p.tvl_usd).toLocaleString():'--';
+        const apr=p.apr_pct!==null?'<b style="color:'+(p.apr_pct>500?'var(--green)':p.apr_pct>100?'#8bc34a':p.apr_pct>30?'var(--accent)':'var(--muted)')+'">'+p.apr_pct+'%</b>':'--';
+        const fdv=p.market_cap||p.fdv_usd?'$'+parseInt(p.market_cap||p.fdv_usd||0).toLocaleString():'--';
+        const txns=p.txns_24h?p.txns_24h+' tx':'--';
+        return '<tr><td>'+(i+1)+'</td><td><b>'+sym(p,'token0_')+'</b>/'+sym(p,'token1_')+'</td><td><span class="tag tag-'+p.protocol+'">'+p.protocol+'</span></td><td><b>'+p.score+'</b></td><td>'+vol+'</td><td>'+tvl+'</td><td>'+apr+'</td><td>'+fdv+'</td><td style="font-size:10px">'+txns+'</td><td>'+p.confidence+'%</td></tr>';
+      }).join('');
+
+    const rg=await json('/ranges');
+    const ranges=rg.ranges||[];
+    document.getElementById('rangeBody').innerHTML=ranges.length===0
+      ?'<tr><td colspan="12" style="text-align:center;color:var(--muted)">Range engine waiting for candles...</td></tr>'
+      :ranges.flatMap(p=>p.ranges.map(r=>'<tr><td><b>'+p.pair+'</b></td><td>'+r.label+'</td><td>'+r.lowerPrice+'</td><td>'+r.upperPrice+'</td><td class="addr">'+r.tickLower+'/'+r.tickUpper+'</td><td>'+r.timeInRange+'</td><td>'+r.prob24h+'</td><td>'+r.fees+'</td><td><b>'+r.net+'</b></td><td>'+r.vsHold+'</td><td>'+r.confidence+'</td><td style="font-size:10px">'+r.duration+'</td></tr>')).join('');
+
+    // Trending — clickable
+    try{
+      const tr=await json('/trending');
+      const tok=(tr.trending||[]).filter(t=>t.volume24hUsd>1000);
+      document.getElementById('trendingBody').innerHTML=tok.length===0
+        ?'<tr><td colspan="7" style="text-align:center;color:var(--muted)">Scanning trending tokens...</td></tr>'
+        :tok.slice(0,20).map((t,i)=>{
+          const vol=t.volume24hUsd?'$'+(t.volume24hUsd/1e3).toFixed(t.volume24hUsd>1e6?0:1)+'k':'--';
+          const tvl=t.tvlUsd?'$'+parseInt(t.tvlUsd).toLocaleString():'--';
+          const mcap=t.mcap?'$'+parseInt(t.mcap).toLocaleString():'--';
+          const txns=t.txns24h?t.txns24h.toLocaleString()+' tx':'--';
+          const apr=t.totalApr!==null?'<b style="color:'+(t.totalApr>5000?'var(--green)':t.totalApr>1000?'#8bc34a':t.totalApr>100?'var(--accent)':'var(--muted)')+'">'+t.totalApr+'%</b>':'--';
+          return '<tr onclick="quickRangeFromTrend(\''+t.tokenAddress+'\',\''+t.symbol+'\')" style="cursor:pointer">'+
+            '<td>'+(i+1)+'</td><td><b>'+t.symbol+'</b></td><td>'+vol+'</td><td>'+tvl+'</td><td>'+apr+'</td><td>'+mcap+'</td><td style="font-size:10px">'+txns+'</td></tr>';
+        }).join('');
+    }catch(e){}
+
+    const ps=await json('/positions');
+    const positions=ps.positions||[];
+    document.getElementById('positionCount').textContent=positions.length;
+    document.getElementById('positionBody').innerHTML=positions.length===0
+      ?'<tr><td colspan="10" style="text-align:center;color:var(--muted)">No active positions</td></tr>'
+      :positions.map(p=>{
+        const s=p.latestSnapshot||{};
+        const pnl=Number(s.net_pnl_usd||0);
+        return '<tr><td>'+sn(p.token0)+'/'+sn(p.token1)+'</td><td>'+p.strategy?.replace(/_/g,' ').slice(0,15)+'</td><td>$'+Number(p.initial_capital_usd).toFixed(0)+'</td><td>$'+Number(s.position_value_usd||0).toFixed(0)+'</td><td style="color:'+(pnl>=0?'var(--green)':'var(--red)')+'">'+(pnl>=0?'+':'')+'$'+pnl.toFixed(2)+'</td><td>$'+Number(s.accrued_fees_usd||0).toFixed(2)+'</td><td>$'+Number(s.impermanent_loss_usd||0).toFixed(2)+'</td><td>'+(s.in_range?'🟢':'🔴')+'</td><td>'+ta(p.opened_at)+'</td><td>'+p.status+'</td></tr>';
+      }).join('');
+
+    const tr=await json('/track-record');
+    const rec=tr.record||{};
+    document.getElementById('trTotal').textContent=rec.totalRecommendations||0;
+    document.getElementById('trWinRate').textContent=(rec.winRate?Math.round(rec.winRate*100):0)+'%';
+    document.getElementById('trFee').textContent='$'+(rec.avgFee?.toFixed(2)||'0.00');
+    document.getElementById('trIl').textContent='$'+(rec.avgIl?.toFixed(2)||'0.00');
+    document.getElementById('trNet').textContent='$'+(rec.avgNet?.toFixed(2)||'0.00');
+
+    const strat=rec.performanceByStrategy||{};
+    document.getElementById('trByStrategy').innerHTML=Object.keys(strat).length===0
+      ?'<div style="color:var(--muted)">No strategy data yet</div>'
+      :Object.entries(strat).map(([k,v])=>'<div style="padding:4px 0">'+k+': '+v.count+' positions · win '+v.wins+'/'+v.count+' · net $'+v.net.toFixed(2)+'</div>').join('');
+  }catch(e){console.error(e)}
+}
+refresh();
+setInterval(refresh,15000);
+</script>
+</body>
+</html>

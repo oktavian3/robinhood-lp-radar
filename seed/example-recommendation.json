@@ -1,0 +1,50 @@
+{
+  "rank": 1,
+  "status": "EXAMPLE_ONLY_NOT_LIVE_DATA",
+  "pair": "TOKEN/USDG",
+  "protocol": "v4",
+  "poolId": "0x...",
+  "fee": 500,
+  "tickSpacing": 10,
+  "hooks": "0x0000000000000000000000000000000000000000",
+  "strategy": "BUY TOKEN BELOW",
+  "currentPrice": "1.0000",
+  "referencePrice": "1.0030",
+  "lowerPrice": "0.8800",
+  "upperPrice": "0.9500",
+  "tickLower": -1278,
+  "tickUpper": -513,
+  "deposit": {
+    "asset": "USDG",
+    "ratio": {
+      "USDG": 1.0,
+      "TOKEN": 0.0
+    }
+  },
+  "estimatedActiveDurationHours": [
+    28,
+    57
+  ],
+  "stayProbability": {
+    "12h": 0.88,
+    "24h": 0.76,
+    "3d": 0.41
+  },
+  "reviewEveryHours": 6,
+  "rebalanceTrigger": "Price within 10% of either boundary",
+  "estimated": {
+    "grossFeesUsd": 12.4,
+    "impermanentLossUsd": -5.1,
+    "gasUsd": -0.8,
+    "netResultUsd": 6.5
+  },
+  "score": 81,
+  "confidence": 0.87,
+  "riskFlags": [],
+  "dataAge": {
+    "onchainSeconds": 8,
+    "referenceSeconds": 22,
+    "ohlcvSeconds": 48,
+    "rankingSeconds": 220
+  }
+}

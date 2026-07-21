@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "position": {
+    "distanceToBoundaryWarningPct": 15,
+    "distanceToBoundaryCriticalPct": 7,
+    "outOfRange": true,
+    "volatilityIncreasePct": 40,
+    "tvlDrop6hPct": 20,
+    "priceDeviationPct": 3,
+    "largeLiquidityRemovalPct": 15
+  },
+  "recommendation": {
+    "scoreDropPoints": 10,
+    "rankChangeMinimum": 3,
+    "rangeChangedPct": 5,
+    "netReturnDropPct": 25,
+    "newRiskFlag": true
+  },
+  "delivery": {
+    "suppressNoMaterialChange": true,
+    "cooldownMinutes": 30
+  }
+}

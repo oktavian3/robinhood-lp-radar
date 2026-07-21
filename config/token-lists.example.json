@@ -1,0 +1,10 @@
+{
+  "trustedQuoteAssets": [],
+  "allowlist": [],
+  "blocklist": [],
+  "notes": [
+    "Populate from official Robinhood token registries and verified contracts.",
+    "Never infer allowlist status from symbol alone.",
+    "Store address checksummed and chain-specific."
+  ]
+}
