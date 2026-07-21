@@ -93,7 +93,7 @@ export default function Positions() {
                 </td></tr>
               )}
               {positions.map(p => {
-                const s = p.latestSnapshot || {};
+                const s = p.latestSnapshot || { position_value_usd: 0, net_pnl_usd: 0, accrued_fees_usd: 0, impermanent_loss_usd: 0, in_range: false };
                 const pnl = Number(s.net_pnl_usd || 0);
                 return (
                   <tr key={p.id}>
