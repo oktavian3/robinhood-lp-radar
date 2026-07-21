@@ -1,5 +1,5 @@
 const API_BASE = typeof window !== 'undefined'
-  ? (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:7474')
+  ? (process.env.NEXT_PUBLIC_API_URL || 'https://api.avetrace.xyz/lp')
   : 'http://localhost:7474';
 
 export async function apiGet<T>(path: string): Promise<T> {
